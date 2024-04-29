@@ -7,44 +7,44 @@ import (
     "time"
 )
 
-func worker(id int, wg *sync.WaitGroup, results chan<- int) {
-    defer wg.Done()
-    time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
-    result := rand.Intn(100)
-    results <- result
-    fmt.Printf("Worker %d: %d\n", id, result)
+func taskExecutor(taskID int, taskGroup *sync.WaitGroup, resultPipe chan<- int) {
+    defer taskGroup.Done()
+    delay := time.Duration(rand.Intn(3)) * time.Second
+    time.Sleep(delay)
+    outcome := rand.Intn(100)
+    resultPipe <- outcome
+    fmt.Printf("Task %d: %d\n", taskID, outcome)
 }
 
-func fanIn(workers int, results chan int) []int {
-    var wg sync.WaitGroup
-    wg.Add(workers) 
+func pipelineMerger(workerCount int, resultPipe chan int) []int {
+    var taskGroup sync.WaitGroup
+    taskGroup.Add(workerCount)
 
-    finalResults := make([]int, 0, workers)
-    resultsChan := make(chan int, workers)
+    finalOutcomes := make([]int, 0, workerCount)
+    intermediatePipe := make(chan int, workerCount)
 
-    for i := 0; i < workers; i++ {
-        go worker(i, &wg, resultsChan)
+    for i := 0; i < workerCount; i++ {
+        go taskExecutor(i, &taskGroup, intermediatePipe)
     }
 
     go func() {
-        wg.Wait()
-        close(resultsChan)
+        taskGroup.Wait()
+        close(intermediatePipe)
     }()
 
     for {
         select {
-        case result, ok := <-resultsChan:
-            if !ok {
-                return finalResults
+        case result, open := <-intermediatePipe:
+            if !open {
+                return finalOutcomes
             }
-            finalResults = append(finalResults, result)
-        
-		}
+            finalOutcomes = append(finalOutcomes, result)
+        }
     }
 }
 
 func main() {
-    results := make(chan int, 10)
-    finalResults := fanIn(10, results)
-    fmt.Println("Final results:", finalResults)
+    resultPipe := make(chan int, 10)
+    finalOutcomes := pipelineMerger(10, resultPipe)
+    fmt.Println("Final outcomes:", finalOutcomes)
 }
